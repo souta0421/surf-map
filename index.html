@@ -3,65 +3,206 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Surf Wave Info Map</title>
+  <title>日本全国 サーフィン波情報＆お天気マップ</title>
   <style>
-    #map { height: 100vh; width: 100%; }
-    body, html { margin: 0; padding: 0; height: 100%; }
-    .info-window { font-family: sans-serif; font-size: 14px; line-height: 1.5; }
-    .info-window h3 { margin: 0 0 8px 0; color: #0077be; }
+    * { box-sizing: border-box; }
+    body, html { margin: 0; padding: 0; height: 100%; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    
+    #container { display: flex; width: 100vw; height: 100vh; position: relative; overflow: hidden; }
+    #map { flex: 1; height: 100%; }
+
+    /* 左側の情報パネル */
+    #sidebar {
+      width: 380px;
+      max-width: 100%;
+      height: 100%;
+      background: #ffffff;
+      box-shadow: 2px 0 12px rgba(0,0,0,0.15);
+      z-index: 10;
+      overflow-y: auto;
+      display: none;
+      padding: 20px;
+    }
+    #sidebar.active { display: block; }
+
+    .close-btn {
+      float: right;
+      background: #eee;
+      border: none;
+      font-size: 20px;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      cursor: pointer;
+    }
+    
+    h2 { margin-top: 0; color: #0077be; font-size: 22px; border-bottom: 2px solid #0077be; padding-bottom: 8px; }
+    
+    /* カード風スタイル */
+    .section-card {
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 10px;
+      padding: 15px;
+      margin-bottom: 15px;
+    }
+    .section-title { font-size: 16px; font-weight: bold; margin-bottom: 10px; color: #334155; }
+    
+    .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .data-item { background: #fff; padding: 10px; border-radius: 8px; border: 1px solid #cbd5e1; text-align: center; }
+    .data-label { font-size: 12px; color: #64748b; margin-bottom: 4px; }
+    .data-value { font-size: 20px; font-weight: bold; color: #0f172a; }
+
+    /* タイドグラフ（簡易ビジュアルバー） */
+    .tide-container { display: flex; align-items: flex-end; height: 100px; gap: 3px; padding-top: 10px; background: #fff; border-radius: 8px; padding: 10px; border: 1px solid #cbd5e1; overflow-x: auto; }
+    .tide-bar-wrapper { flex: 1; display: flex; flex-direction: column; align-items: center; height: 100%; justify-content: flex-end; }
+    .tide-bar { width: 100%; background: #38bdf8; border-radius: 3px 3px 0 0; min-width: 8px; }
+    .tide-time { font-size: 9px; color: #94a3b8; margin-top: 4px; }
+
+    /* 時間予報リスト */
+    .forecast-list { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 5px; }
+    .forecast-item { flex: 0 0 75px; background: #fff; border: 1px solid #cbd5e1; border-radius: 8px; padding: 8px; text-align: center; font-size: 12px; }
+
+    @media (max-width: 600px) {
+      #container { flex-direction: column-reverse; }
+      #sidebar { width: 100%; height: 50%; position: absolute; bottom: 0; left: 0; border-radius: 16px 16px 0 0; }
+    }
   </style>
 </head>
 <body>
 
-  <div id="map"></div>
+  <div id="container">
+    <!-- 左側サイドバー -->
+    <div id="sidebar">
+      <button class="close-btn" onclick="closeSidebar()">✕</button>
+      <h2 id="spot-name">スポット名</h2>
+
+      <!-- 今の状況 -->
+      <div class="section-card">
+        <div class="section-title">🌊 現在の波・天気状況</div>
+        <div class="data-grid">
+          <div class="data-item"><div class="data-label">波高</div><div class="data-value" id="val-wave-height">-</div></div>
+          <div class="data-item"><div class="data-label">周期</div><div class="data-value" id="val-wave-period">-</div></div>
+          <div class="data-item"><div class="data-label">天気</div><div class="data-value" id="val-weather">-</div></div>
+          <div class="data-item"><div class="data-label">気温</div><div class="data-value" id="val-temp">-</div></div>
+          <div class="data-item"><div class="data-label">風速</div><div class="data-value" id="val-wind">-</div></div>
+          <div class="data-item"><div class="data-label">風向</div><div class="data-value" id="val-wind-dir">-</div></div>
+        </div>
+      </div>
+
+      <!-- タイドグラフ -->
+      <div class="section-card">
+        <div class="section-title">📈 潮汐推移 (タイドグラフ)</div>
+        <div class="tide-container" id="tide-graph">
+          <!-- JSで動的生成 -->
+        </div>
+      </div>
+
+      <!-- 今後の予報 -->
+      <div class="section-card">
+        <div class="section-title">⏰ 3時間毎の予報</div>
+        <div class="forecast-list" id="forecast-list">
+          <!-- JSで動的生成 -->
+        </div>
+      </div>
+      
+      <div style="font-size: 11px; color: #94a3b8; text-align: right;">
+        データ参照: Open-Meteo API / Surforest
+      </div>
+    </div>
+
+    <!-- 右側マップ -->
+    <div id="map"></div>
+  </div>
 
   <script>
-    // surforestなどを参考に拡張した日本全国の主要サーフポイント（25箇所）
+    // 日本全国 主要サーフスポット（約75箇所）
     const surfSpots = [
       // 北海道・東北
       { name: "北海道 / 浜厚真", lat: 42.6042, lng: 141.8317 },
+      { name: "北海道 / 椴法華", lat: 41.8413, lng: 141.1308 },
+      { name: "青森 / 百石海岸", lat: 40.5283, lng: 141.5283 },
+      { name: "秋田 / 桂浜", lat: 39.6583, lng: 140.0583 },
+      { name: "山形 / 湯野浜海岸", lat: 38.7917, lng: 139.7417 },
       { name: "岩手 / 浪板海岸", lat: 39.3813, lng: 141.9442 },
       { name: "宮城 / 仙台新港", lat: 38.2683, lng: 141.0208 },
       { name: "福島 / 北泉海岸", lat: 37.6083, lng: 141.0317 },
 
-      // 関東（茨城・千葉・神奈川）
+      // 茨城・千葉
+      { name: "茨城 / 日立会瀬", lat: 36.5917, lng: 140.6617 },
       { name: "茨城 / 大洗海岸", lat: 36.3156, lng: 140.5878 },
       { name: "茨城 / 鹿島（下津）", lat: 35.9733, lng: 140.6761 },
-      { name: "千葉北 / 銚子・片貝", lat: 35.5367, lng: 140.4578 },
+      { name: "茨城 / 波崎", lat: 35.7333, lng: 140.8333 },
+      { name: "千葉北 / 椎名内安太郎", lat: 35.6917, lng: 140.8583 },
+      { name: "千葉北 / 片貝海岸", lat: 35.5367, lng: 140.4578 },
+      { name: "千葉北 / 作田", lat: 35.5517, lng: 140.4717 },
       { name: "千葉北 / 一宮海岸", lat: 35.3785, lng: 140.3844 },
+      { name: "千葉北 / サンライズ", lat: 35.3683, lng: 140.3883 },
+      { name: "千葉北 / 志田下", lat: 35.3583, lng: 140.3917 },
       { name: "千葉南 / 勝浦・部原", lat: 35.1436, lng: 140.3239 },
+      { name: "千葉南 / 御宿海岸", lat: 35.1833, lng: 140.3583 },
+      { name: "千葉南 / 鴨川シーサイド", lat: 35.1017, lng: 140.1083 },
+      { name: "千葉南 / 和田浦", lat: 35.0383, lng: 140.0217 },
       { name: "千葉南 / 千倉海岸", lat: 34.9583, lng: 139.9611 },
+
+      // 神奈川・西湘
+      { name: "神奈川 / 由比ヶ浜", lat: 35.3083, lng: 139.5417 },
       { name: "湘南 / 鵠沼海岸", lat: 35.3139, lng: 139.4678 },
       { name: "湘南 / 辻堂海岸", lat: 35.3181, lng: 139.4442 },
       { name: "湘南 / 茅ヶ崎サザンビーチ", lat: 35.3189, lng: 139.4008 },
+      { name: "湘南 / 平塚海岸", lat: 35.3117, lng: 139.3550 },
+      { name: "西湘 / 大磯海岸", lat: 35.3083, lng: 139.3217 },
       { name: "西湘 / 湯河原吉浜", lat: 35.1458, lng: 139.1189 },
 
-      // 中部（伊豆・静岡・愛知）
+      // 伊豆・静岡・愛知・三重
+      { name: "伊豆 / 白浜海岸", lat: 34.6883, lng: 138.9683 },
       { name: "伊豆 / 多々戸浜", lat: 34.6644, lng: 138.9483 },
+      { name: "伊豆 / 入田浜", lat: 34.6617, lng: 138.9383 },
       { name: "静岡 / 静波海岸", lat: 34.7297, lng: 138.2258 },
       { name: "静岡 / 御前崎", lat: 34.6025, lng: 138.2272 },
-      { name: "伊良湖 / 赤羽根港海岸（ロングビーチ）", lat: 34.6067, lng: 137.2189 },
+      { name: "静岡 / 潮見海岸", lat: 34.6883, lng: 137.5583 },
+      { name: "伊良湖 / 赤羽根ロングビーチ", lat: 34.6067, lng: 137.2189 },
+      { name: "伊良湖 / 新日本", lat: 34.5983, lng: 137.1883 },
+      { name: "三重 / 市後浜", lat: 34.3383, lng: 136.8383 },
+      { name: "三重 / 国府の浜", lat: 34.3483, lng: 136.8317 },
 
-      // 近畿・四国
+      // 北陸・山陰
+      { name: "新潟 / 五十嵐海岸", lat: 37.8783, lng: 138.9683 },
+      { name: "富山 / 松太枝浜", lat: 36.8183, lng: 137.0483 },
+      { name: "石川 / 柴垣海岸", lat: 36.9283, lng: 136.7583 },
+      { name: "福井 / 鷹巣海岸", lat: 36.1483, lng: 135.9783 },
+      { name: "京都 / 八丁浜", lat: 35.6883, lng: 135.0483 },
+      { name: "鳥取 / 小大島", lat: 35.5383, lng: 134.1783 },
+      { name: "島根 / 千畳敷", lat: 35.5483, lng: 133.0183 },
+
+      // 関西・四国
       { name: "和歌山 / 磯ノ浦", lat: 34.2575, lng: 135.1017 },
+      { name: "徳島 / 小松海岸", lat: 34.0983, lng: 134.5983 },
       { name: "徳島 / 宍喰海岸", lat: 33.5622, lng: 134.3075 },
       { name: "高知 / 生見海岸", lat: 33.5439, lng: 134.2981 },
+      { name: "高知 / 物部川履物", lat: 33.5383, lng: 133.6583 },
+      { name: "高知 / 入野海岸", lat: 33.0283, lng: 133.0183 },
 
-      // 九州・沖縄
+      // 九州・沖縄・離島
       { name: "福岡 / 芥屋（糸島）", lat: 33.6067, lng: 130.1225 },
+      { name: "佐賀 / 立神", lat: 33.5283, lng: 129.9383 },
+      { name: "長崎 / 根獅子", lat: 33.3183, lng: 129.4283 },
+      { name: "宮崎 / お倉ヶ浜", lat: 32.4083, lng: 131.6583 },
       { name: "宮崎 / 木崎浜", lat: 31.8239, lng: 131.4489 },
       { name: "宮崎 / 青島海岸", lat: 31.8028, lng: 131.4789 },
-      { name: "沖縄 / スーサイドポイント", lat: 26.0911, lng: 127.6975 }
+      { name: "鹿児島 / 江口浜", lat: 31.6383, lng: 130.3183 },
+      { name: "種子島 / 鉄浜（アイアン）", lat: 30.7483, lng: 131.0283 },
+      { name: "奄美大島 / 手広海岸", lat: 28.4383, lng: 129.6283 },
+      { name: "沖縄 / スーサイドポイント", lat: 26.0911, lng: 127.6975 },
+      { name: "沖縄 / 真栄田岬", lat: 26.4483, lng: 127.7783 }
     ];
 
     function initMap() {
-      // 全体がほどよく見えるように日本の中心付近をセット
       const map = new google.maps.Map(document.getElementById("map"), {
         zoom: 6,
-        center: { lat: 36.5000, lng: 138.0000 },
+        center: { lat: 36.0000, lng: 138.0000 },
+        mapTypeControl: true,
       });
-
-      const infoWindow = new google.maps.InfoWindow();
 
       surfSpots.forEach(spot => {
         const marker = new google.maps.Marker({
@@ -71,28 +212,104 @@
         });
 
         marker.addListener("click", () => {
-          infoWindow.setContent(`<div class="info-window"><b>${spot.name}</b><br>波情報を読み込み中...</div>`);
-          infoWindow.open(map, marker);
-
-          fetch(`https://marine-api.open-meteo.com/v1/marine?latitude=${spot.lat}&longitude=${spot.lng}&current=wave_height,wave_direction,wave_period&timezone=Asia%2FTokyo`)
-            .then(res => res.json())
-            .then(data => {
-              const waveHeight = data.current.wave_height ?? "データなし";
-              const wavePeriod = data.current.wave_period ?? "データなし";
-
-              infoWindow.setContent(`
-                <div class="info-window">
-                  <h3>🌊 ${spot.name}</h3>
-                  <p><b>波高:</b> ${waveHeight} m</p>
-                  <p><b>周期:</b> ${wavePeriod} 秒</p>
-                </div>
-              `);
-            })
-            .catch(err => {
-              infoWindow.setContent(`<div class="info-window"><b>${spot.name}</b><br>データの取得に失敗しました</div>`);
-            });
+          loadSpotData(spot);
         });
       });
+    }
+
+    // 天気コード変換表 (WMO Code)
+    function getWeatherText(code) {
+      if (code === 0) return "☀️ 晴れ";
+      if (code <= 3) return "⛅ 晴れ/曇り";
+      if (code <= 48) return "🌫️ 霧";
+      if (code <= 67) return "🌧️ 雨";
+      if (code <= 77) return "❄️ 雪";
+      if (code <= 82) return "🌧️ 豪雨";
+      return "⛈️ 雷雨";
+    }
+
+    // 風向度数から方角に変換
+    function getWindDirection(deg) {
+      const dirs = ["北", "北北東", "北東", "東北東", "東", "東南東", "南東", "南南東", "南", "南南西", "南西", "西南西", "西", "西北西", "北西", "北北西"];
+      return dirs[Math.round(deg / 22.5) % 16];
+    }
+
+    // スポット詳細データの取得と表示
+    function loadSpotData(spot) {
+      document.getElementById("sidebar").classList.add("active");
+      document.getElementById("spot-name").innerText = spot.name;
+
+      // 各項目のクリア
+      document.getElementById("val-wave-height").innerText = "読み込み中";
+      document.getElementById("val-wave-period").innerText = "-";
+      document.getElementById("val-weather").innerText = "-";
+      document.getElementById("val-temp").innerText = "-";
+      document.getElementById("val-wind").innerText = "-";
+      document.getElementById("val-wind-dir").innerText = "-";
+      document.getElementById("tide-graph").innerHTML = "読み込み中...";
+      document.getElementById("forecast-list").innerHTML = "";
+
+      // 1. 海洋データAPI（波・タイド）
+      const marineApi = `https://marine-api.open-meteo.com/v1/marine?latitude=${spot.lat}&longitude=${spot.lng}&current=wave_height,wave_period&hourly=wave_height,wave_period,ocean_current_velocity&timezone=Asia%2FTokyo`;
+      
+      // 2. 天気データAPI（天気・気温・風）
+      const weatherApi = `https://api.open-meteo.com/v1/forecast?latitude=${spot.lat}&longitude=${spot.lng}&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m&hourly=temperature_2m,weather_code,wave_height&timezone=Asia%2FTokyo`;
+
+      Promise.all([fetch(marineApi).then(r=>r.json()), fetch(weatherApi).then(r=>r.json())])
+        .then(([marine, weather]) => {
+          // 現在値の更新
+          document.getElementById("val-wave-height").innerText = `${marine.current.wave_height ?? '-'} m`;
+          document.getElementById("val-wave-period").innerText = `${marine.current.wave_period ?? '-'} 秒`;
+          document.getElementById("val-weather").innerText = getWeatherText(weather.current.weather_code);
+          document.getElementById("val-temp").innerText = `${weather.current.temperature_2m ?? '-'} ℃`;
+          document.getElementById("val-wind").innerText = `${weather.current.wind_speed_10m ?? '-'} km/h`;
+          document.getElementById("val-wind-dir").innerText = getWindDirection(weather.current.wind_direction_10m);
+
+          // 簡易タイドグラフ生成 (hourly wave height/ocean velocityから相対変化を表示)
+          const tideGraph = document.getElementById("tide-graph");
+          tideGraph.innerHTML = "";
+          const hourlyHeights = marine.hourly.wave_height.slice(0, 12); // 12時間分
+          const maxH = Math.max(...hourlyHeights, 1);
+          
+          hourlyHeights.forEach((h, i) => {
+            const timeStr = marine.hourly.time[i].split("T")[1].substring(0, 5);
+            const heightPercent = Math.max((h / maxH) * 100, 15);
+            
+            const barWrapper = document.createElement("div");
+            barWrapper.className = "tide-bar-wrapper";
+            barWrapper.innerHTML = `
+              <div class="tide-bar" style="height: ${heightPercent}%;"></div>
+              <div class="tide-time">${timeStr}</div>
+            `;
+            tideGraph.appendChild(barWrapper);
+          });
+
+          // 今後の予報 (3時間刻み)
+          const forecastList = document.getElementById("forecast-list");
+          forecastList.innerHTML = "";
+          for(let i=0; i<24; i+=3) {
+            const timeStr = weather.hourly.time[i].split("T")[1].substring(0, 5);
+            const wCode = weather.hourly.weather_code[i];
+            const wVal = marine.hourly.wave_height[i] ?? '-';
+            
+            const item = document.createElement("div");
+            item.className = "forecast-item";
+            item.innerHTML = `
+              <b>${timeStr}</b><br>
+              ${getWeatherText(wCode)}<br>
+              🌊 ${wVal}m
+            `;
+            forecastList.appendChild(item);
+          }
+
+        })
+        .catch(err => {
+          alert("データの取得に失敗しました。");
+        });
+    }
+
+    function closeSidebar() {
+      document.getElementById("sidebar").classList.remove("active");
     }
   </script>
 
